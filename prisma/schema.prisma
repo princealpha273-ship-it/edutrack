@@ -1,0 +1,562 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// PLATFORM LEVEL - Super Admin manages institutions
+// ============================================
+
+model PlatformAdmin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  password     String
+  fullName     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Institution {
+  id                    String   @id @default(uuid())
+  name                  String
+  slug                  String   @unique // URL-friendly name (mukiria-secondary, etc.)
+  type                  String   // primary, secondary, college, university, training
+  country               String   @default("Kenya")
+  county                String?
+  address               String?
+  phone                 String?
+  email                 String?
+  logo                  String?
+  
+  // Subscription
+  subscriptionStatus    String   @default("trial") // trial, active, suspended, cancelled
+  subscriptionPlan      String   @default("basic") // basic, standard, premium
+  subscriptionStart    DateTime?
+  subscriptionEnd      DateTime?
+  monthlyFee           Float    @default(0)
+  
+  // Settings
+  timezone             String   @default("Africa/Nairobi")
+  dateFormat           String   @default("DD/MM/YYYY")
+  currency             String   @default("KES")
+  currencySymbol       String   @default("KES")
+  
+  // Commission Settings
+  defaultFeeAmount     Float    @default(7000)
+  commissionPerTransaction Float @default(100)
+  
+  // Branding
+  primaryColor         String   @default("#1e40af")
+  secondaryColor       String   @default("#3b82f6")
+  
+  // Limits
+  maxStudents          Int      @default(500)
+  maxStaff             Int      @default(50)
+  maxStorageMB         Int      @default(1000)
+  
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Relations
+  users                InstitutionUser[]
+  students             Student[]
+  teachers             Teacher[]
+  admins               Admin[]
+  feeTransactions      FeeTransaction[]
+  announcements        Announcement[]
+  activities           Activity[]
+  subjectGrades        SubjectGrade[]
+  timetableEntries     TimetableEntry[]
+  schoolWifis          SchoolWifi[]
+  loginRecords         LoginRecord[]
+  studentAttendance    StudentAttendance[]
+  staffAttendance      StaffAttendance[]
+  visitorAttendance    NonStaffAttendance[]
+  payments             Payment[]
+  hotspotAdmins        HotspotAdmin[]
+  ePortfolios          EPortfolio[]
+
+  @@index([slug])
+  @@index([subscriptionStatus])
+}
+
+model InstitutionUser {
+  id             String      @id @default(uuid())
+  institutionId  String
+  institution    Institution @relation(fields: [institutionId], references: [id])
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
+  role           String      @default("student") // student, teacher, admin, parent
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+
+  @@unique([institutionId, userId])
+  @@index([institutionId])
+}
+
+// ============================================
+// USER - Can belong to multiple institutions
+// ============================================
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  phone        String?
+  password     String
+  fullName     String
+  profilePhoto String?
+  faceImage    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Institution memberships
+  institutionUsers InstitutionUser[]
+  
+  // Role-specific relations
+  student           Student?
+  teacher           Teacher?
+  admin             Admin?
+  
+  // Legacy relations
+  announcements     Announcement[]
+  feeTransactions   FeeTransaction[]
+  loginRecords      LoginRecord[]
+  staffAttendance   StaffAttendance[]
+}
+
+// ============================================
+// STUDENT - Linked to institution
+// ============================================
+
+model Student {
+  id               String   @id @default(uuid())
+  institutionId    String
+  institution      Institution @relation(fields: [institutionId], references: [id])
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id])
+  admissionNumber  String
+  class            String
+  stream           String?
+  parentPhone      String?
+  parentEmail      String?
+  portfolioData    String?
+  academicScore    Float    @default(0)
+  attendanceRate   Float    @default(100)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  activities        Activity[]
+  feeTransactions  FeeTransaction[]
+  subjects         SubjectGrade[]
+  timetableEntries TimetableEntry[]
+  attendance       StudentAttendance[]
+  ePortfolio       EPortfolio?
+
+  @@unique([institutionId, admissionNumber])
+  @@index([institutionId])
+  @@index([class])
+}
+
+// ============================================
+// TEACHER - Linked to institution
+// ============================================
+
+model Teacher {
+  id            String   @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  subject       String?
+  employeeNumber String?
+  qualifications String?
+  createdAt     DateTime @default(now())
+
+  timetableEntries TimetableEntry[]
+
+  @@unique([institutionId, userId])
+  @@index([institutionId])
+}
+
+// ============================================
+// ADMIN - Linked to institution
+// ============================================
+
+model Admin {
+  id            String   @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  title         String?
+  createdAt     DateTime @default(now())
+
+  @@unique([institutionId, userId])
+  @@index([institutionId])
+}
+
+// ============================================
+// FEE TRANSACTIONS - Linked to institution
+// ============================================
+
+model FeeTransaction {
+  id                    String   @id @default(uuid())
+  institutionId         String
+  institution           Institution @relation(fields: [institutionId], references: [id])
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id])
+  studentId             String?
+  student               Student? @relation(fields: [studentId], references: [id])
+  schoolFeeAmount       Float
+  commissionFee         Float    @default(100)
+  amountPaid            Float
+  balanceRemaining      Float
+  paymentStatus         String   @default("pending")
+  paymentGatewayRef     String?
+  mpesaReceiptNumber   String?
+  phoneNumber           String?
+  paymentDate           DateTime @default(now())
+  createdAt             DateTime @default(now())
+
+  @@index([institutionId])
+  @@index([studentId])
+  @@index([paymentDate])
+}
+
+// ============================================
+// PAYMENTS - Payment records linked to institution
+// ============================================
+
+model Payment {
+  id              String   @id @default(uuid())
+  institutionId   String
+  institution     Institution @relation(fields: [institutionId], references: [id])
+  type            String   // fee, subscription, other
+  amount          Float
+  currency        String   @default("KES")
+  status          String   @default("pending")
+  method          String?  // mpesa, bank, card
+  reference       String?
+  description     String?
+  paidAt          DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([institutionId])
+  @@index([status])
+}
+
+// ============================================
+// ANNOUNCEMENTS - Linked to institution
+// ============================================
+
+model Announcement {
+  id           String   @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  adminId      String
+  admin        User     @relation(fields: [adminId], references: [id])
+  title        String
+  message      String
+  targetRole   String   @default("all")
+  priority     String   @default("normal")
+  createdAt    DateTime @default(now())
+
+  @@index([institutionId])
+}
+
+// ============================================
+// ACTIVITIES - Linked to institution
+// ============================================
+
+model Activity {
+  id              String   @id @default(uuid())
+  institutionId   String
+  institution     Institution @relation(fields: [institutionId], references: [id])
+  studentId       String
+  student         Student  @relation(fields: [studentId], references: [id])
+  activityName    String
+  category        String
+  participationLevel String
+  achievementNotes String?
+  achievementLevel String?
+  date            DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([institutionId])
+  @@index([studentId])
+}
+
+// ============================================
+// SUBJECT GRADES - Linked to institution
+// ============================================
+
+model SubjectGrade {
+  id           String   @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  studentId    String
+  student      Student  @relation(fields: [studentId], references: [id])
+  subject      String
+  term         String
+  year         Int
+  score        Float
+  grade        String
+  createdAt    DateTime @default(now())
+
+  @@index([institutionId])
+  @@index([studentId])
+}
+
+// ============================================
+// TIMETABLE - Linked to institution
+// ============================================
+
+model TimetableEntry {
+  id            String   @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  studentId     String?
+  student       Student? @relation(fields: [studentId], references: [id])
+  teacherId     String?
+  teacher       Teacher? @relation(fields: [teacherId], references: [id])
+  dayOfWeek    String
+  timeSlot      String
+  subject       String
+  room          String?
+  createdAt     DateTime @default(now())
+
+  @@index([institutionId])
+}
+
+// ============================================
+// OFFLINE SYNC
+// ============================================
+
+model OfflineSync {
+  id           String   @id @default(uuid())
+  tableName    String
+  recordId     String
+  action       String
+  data         String
+  synced       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
+
+// ============================================
+// WIFI NETWORKS - Linked to institution
+// ============================================
+
+model SchoolWifi {
+  id            String   @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  ssid          String
+  bssid         String?
+  isActive      Boolean  @default(true)
+  allowedFrom   String   @default("00:00:00")
+  allowedTo     String   @default("23:59:59")
+  createdAt     DateTime @default(now())
+
+  @@index([institutionId])
+}
+
+// ============================================
+// LOGIN RECORDS - Linked to institution
+// ============================================
+
+model LoginRecord {
+  id            String   @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  sessionType   String
+  selfieImage   String
+  wifiSSID      String?
+  wifiBSSID     String?
+  ipAddress     String?
+  latitude      Float?
+  longitude     Float?
+  locationName  String?
+  loginTime     DateTime @default(now())
+  date          String
+  time          String
+  isWithinWifi  Boolean  @default(false)
+  verified      Boolean  @default(true)
+
+  @@index([institutionId])
+  @@index([date])
+}
+
+// ============================================
+// STUDENT ATTENDANCE - Linked to institution
+// ============================================
+
+model StudentAttendance {
+  id               String   @id @default(uuid())
+  institutionId    String
+  institution      Institution @relation(fields: [institutionId], references: [id])
+  studentId        String
+  student          Student  @relation(fields: [studentId], references: [id])
+  date             String
+  checkInTime      String?
+  checkInWifi      String?
+  checkInImage     String?
+  checkInVerified  Boolean  @default(true)
+  checkOutTime     String?
+  checkOutWifi     String?
+  checkOutImage    String?
+  checkOutVerified Boolean  @default(true)
+  status           String   @default("present")
+  remarks          String?
+  markedBy         String?
+  createdAt        DateTime @default(now())
+
+  @@unique([studentId, date])
+  @@index([institutionId])
+  @@index([date])
+}
+
+// ============================================
+// STAFF ATTENDANCE - Linked to institution
+// ============================================
+
+model StaffAttendance {
+  id               String   @id @default(uuid())
+  institutionId    String
+  institution      Institution @relation(fields: [institutionId], references: [id])
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  role             String
+  date             String
+  checkInTime      String?
+  checkInWifi      String?
+  checkInImage     String?
+  checkInVerified  Boolean  @default(true)
+  checkOutTime     String?
+  checkOutWifi     String?
+  checkOutImage    String?
+  checkOutVerified Boolean  @default(true)
+  status           String   @default("present")
+  remarks          String?
+  createdAt        DateTime @default(now())
+
+  @@unique([userId, date])
+  @@index([institutionId])
+  @@index([date])
+}
+
+// ============================================
+// VISITOR ATTENDANCE - Linked to institution
+// ============================================
+
+model NonStaffAttendance {
+  id            String   @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  fullName      String
+  phone         String?
+  organization  String?
+  purpose       String
+  date          String
+  checkInTime   String?
+  checkInWifi   String?
+  checkInImage  String?
+  checkOutTime  String?
+  checkOutWifi  String?
+  checkOutImage String?
+  status        String   @default("checked-in")
+  createdAt     DateTime @default(now())
+
+  @@index([institutionId])
+  @@index([date])
+}
+
+// ============================================
+// HOTSPOT ADMIN - ClassReps/Unit Teachers (Max 8 per institution)
+// Only these users can provide hotspots for attendance
+// ============================================
+
+model HotspotAdmin {
+  id              String   @id @default(uuid())
+  institutionId   String
+  institution     Institution @relation(fields: [institutionId], references: [id])
+  userId          String?  // If linked to a user account
+  fullName        String   // Name of hotspot provider
+  phone           String   // Phone number for hotspot
+  role            String   // "classrep" or "unit_teacher"
+  unit            String?  // Unit name or class
+  hotspotName     String   // Name of the hotspot (e.g., "Mr. John Hotspot" or "Form 2A Hotspot")
+  isActive        Boolean  @default(true)
+  isOnline        Boolean  @default(false) // Whether hotspot is currently active
+  lastActiveAt   DateTime?
+  maxDevices      Int      @default(10) // Max devices that can connect
+  currentDevices  Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([institutionId, phone])
+  @@index([institutionId])
+}
+
+// ============================================
+// E-PORTFOLIO - Student digital portfolio
+// ============================================
+
+model EPortfolio {
+  id            String   @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  studentId     String   @unique
+  student       Student  @relation(fields: [studentId], references: [id])
+  
+  // Portfolio URL (can link external portfolio)
+  portfolioUrl   String?
+  
+  // Embedded portfolio data
+  bio           String?
+  aboutMe       String?
+  interests     String?
+  skills        String?
+  
+  // Achievements
+  achievements  String?  // JSON array of achievements
+  
+  // Certifications
+  certifications String? // JSON array of certifications
+  
+  // Projects
+  projects      String?  // JSON array of projects
+  
+  // Extracurricular
+  clubs         String?  // JSON array of clubs
+  sports        String?  // JSON array of sports
+  leadership    String?  // JSON array of leadership roles
+  
+  // Volunteer work
+  volunteer     String?  // JSON array of volunteer work
+  
+  // References
+  references    String?  // JSON array of references
+  
+  // Contact
+  linkedIn      String?
+  twitter       String?
+  github        String?
+  website       String?
+  
+  // Visibility
+  isPublic      Boolean  @default(false)
+  shareableLink String?  // Unique link for sharing
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([institutionId, studentId])
+  @@index([institutionId])
+}
