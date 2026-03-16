@@ -1,0 +1,16 @@
+[build]
+  command = "prisma generate && next build"
+  publish = ".next"
+
+[build.environment]
+  NEXT_TELEMETRY_DISABLED = "1"
+
+[[redirects]]
+  from = "/:path*"
+  to = "/:path*"
+  status = 200
+
+[[redirects]]
+  from = "/:path*/"
+  to = "/:path*/"
+  status = 200
